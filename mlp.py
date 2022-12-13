@@ -16,6 +16,7 @@ class P2PEngine(object):
         self.n = config['points_per_iter']
         self.m = config['feature_dim']
         self.d = config['label_dim']
+        self.d_max = config['label_max']
         self.delta = config['delta']
         self.w = np.zeros((self.n, self.d))
         self.A = np.tile(np.eye(self.d), (self.n, 1, 1))
@@ -65,7 +66,7 @@ class P2PEngine(object):
 
             model = ConcreteModel()
             model.dSet = Set(initialize=range(self.d))
-            model.w = Var(model.dSet)
+            model.w = Var(model.dSet,domain=Binary)
             model.nu = Var(model.dSet)
             for j in range(self.d):
                 model.w[j].value = (2*np.random.rand() - 1)/np.sqrt(self.d)
@@ -73,6 +74,7 @@ class P2PEngine(object):
 
             model.obj = Objective(expr=sum((c_hat[j] + model.nu[j]) * model.w[j] for j in range(self.d)), sense=minimize)
             model.w_constraint = Constraint(expr = sum(model.w[j] * model.w[j] for j in range(self.d)) <= 1)
+            model.w_constraint_2 = Constraint(expr=sum(model.w[j] for j in range(self.d)) <= self.d_max)
             expr1 = sum(self.A[i,j,k] * (model.nu[j] - self.mu_hat[i,j]) *
             (model.nu[k] - self.mu_hat[i,k]) for j in range(self.d) for k in range(self.d))
             model.nu_constraint = Constraint(expr= expr1 <= 1)
@@ -103,9 +105,11 @@ class P2PEngine(object):
         for i in range(self.n):
             lp = gp.Model("lp" + str(i))
             c = test_label[i,:].squeeze()
-            w = lp.addMVar(shape=self.d, lb=-GRB.INFINITY, name="w")
+            w = lp.addMVar(shape=self.d, lb=-GRB.INFINITY, name="w", vtype=gp.GRB.BINARY)
             lp.setObjective((c + self.mu) @ w, GRB.MINIMIZE)
-            lp.addConstr(w @ w <= 1, name="norm")
+            
+            lp.addConstr(gp.quicksum(w[i] for i in range(self.d)) <= self.d_max,name="norm")
+            #lp.addConstr(w @ w <= 1, name="norm")
             lp.Params.OutputFlag = 0
             try:
                 lp.optimize()
