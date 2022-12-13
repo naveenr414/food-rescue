@@ -8,9 +8,6 @@ import matplotlib.pyplot as plt
 from time import time
 import seaborn as sns
 
-
-
-
 mlp_config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
               'learning_alg': 'OLS',
               'num_trial': 10,
@@ -26,7 +23,17 @@ mlp_config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
               'batch_size': 32,
               'optimizer': 'adam',
               'adam_lr': 1e-3,
-              'l2_regularization': 1e-4
+              'l2_regularization': 1e-4, 
+              'num_sources': 5,
+              'num_destinations': 5, 
+              'avg_capacity': 0.7,
+              'std_capacity': 0.1,
+              'avg_range': 0.7,
+              'std_range': 0.1,
+              'avg_data_capacity': 0.6,
+              'std_data_capacity': 0.1,
+              'x_tilde_attributes': 4,
+              'r_attributes': 2,
               }
 
 
@@ -61,6 +68,7 @@ for trial_idx in range(config['num_trial']):
         regret_p2p_o[trial_idx, epoch-1] = ro_p2p.sum() - ro_best.sum()
         regret_p2p_b[trial_idx, epoch-1] = rb_p2p.sum() - rb_best.sum()
         regret_bandit[trial_idx, epoch-1] = ro_bandit.sum() + rb_bandit.sum() - ro_best.sum() - rb_best.sum()
+                
         if epoch == config['num_epoch'] - 1:
             end_time = time()
             print('Epoch {} starts !'.format(epoch))
