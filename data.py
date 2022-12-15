@@ -33,6 +33,18 @@ class P2PEnvironment(object):
         self.eps = config['epsilon']
         self.eta = config['eta']
         self.KA = config['KA_norm']
+        
+        self.r_mean = config['mean_volunteer_attributes']
+        self.r_std = config['std_volunteer_attributes']
+        self.n_s = config['num_sources']
+        self.n_d = config['num_destinations']
+        
+        self.avg_data_capacity = config['avg_data_capacity']
+        self.std_data_capacity = config['std_data_capacity']
+        self.x_tilde_attributes = config['x_tilde_attributes']
+        self.r_attributes = config['r_attributes']
+
+        
         np.random.seed(seed)
         self.A = (2 * np.random.rand(self.d, self.m) - 1)
         self.A = self.A/np.linalg.norm(self.A, 1) * np.random.rand() * self.KA
@@ -41,10 +53,6 @@ class P2PEnvironment(object):
         self.num_sources = config['num_sources']
         self.num_destinations = config['num_destinations']
         
-        self.avg_data_capacity = config['avg_data_capacity']
-        self.std_data_capacity = config['std_data_capacity']
-        self.x_tilde_attributes = config['x_tilde_attributes']
-        self.r_attributes = config['r_attributes']
                 
         self.setup_locations()
         self.generate_volunteer_info()
@@ -124,3 +132,6 @@ class P2PEnvironment(object):
         ro = np.sum(self._y * action, 1)
         rb = action.dot(self.mu) + np.random.normal(0, self.eta, self.n)
         return ro, rb
+    
+    def get_match_reward(self, matches):
+        return len(matches)

@@ -6,6 +6,7 @@ from pyomo.environ import *
 from pyomo.opt import SolverStatus, TerminationCondition
 from time import time
 from multiprocessing import  Pool
+from scipy.optimize import linear_sum_assignment
 
 
 class P2PEngine(object):
@@ -72,7 +73,7 @@ class P2PEngine(object):
                 model.w[j].value = (2*np.random.rand() - 1)/np.sqrt(self.d)
                 model.nu[j].value = (2*np.random.rand() - 1)/np.sqrt(self.d)
 
-            model.obj = Objective(expr=sum((c_hat[j] + model.nu[j]) * model.w[j] for j in range(self.d)), sense=minimize)
+            model.obj = Objective(expr=sum((-c_hat[j] + model.nu[j]) * model.w[j] for j in range(self.d)), sense=minimize)
             model.w_constraint = Constraint(expr = sum(model.w[j] * model.w[j] for j in range(self.d)) <= 1)
             model.w_constraint_2 = Constraint(expr=sum(model.w[j] for j in range(self.d)) <= self.d_max)
             expr1 = sum(self.A[i,j,k] * (model.nu[j] - self.mu_hat[i,j]) *
@@ -100,13 +101,20 @@ class P2PEngine(object):
             self.A[i,:,:] = self.A[i,:,:] + np.outer(self.w[i,:], self.w[i,:])
             self.mu_hat[i,:] = np.matmul(np.linalg.inv(self.A[i,:,:]), self.rw[i,:])
 
+    def get_matches(self,action,labels):
+        true_matches = action*labels
+        hungarian_algorithm = linear_sum_assignment(-true_matches)
+        
+        matches = list(zip(*hungarian_algorithm))
+        valid_matches = [(i,j) for (i,j) in matches if true_matches[i][j]>0.5]
+        return valid_matches 
 
     def p2p_known_mu(self, test_label):
         for i in range(self.n):
             lp = gp.Model("lp" + str(i))
             c = test_label[i,:].squeeze()
             w = lp.addMVar(shape=self.d, lb=-GRB.INFINITY, name="w", vtype=gp.GRB.BINARY)
-            lp.setObjective((c + self.mu) @ w, GRB.MINIMIZE)
+            lp.setObjective((-c + self.mu) @ w, GRB.MINIMIZE)
             
             lp.addConstr(gp.quicksum(w[i] for i in range(self.d)) <= self.d_max,name="norm")
             #lp.addConstr(w @ w <= 1, name="norm")

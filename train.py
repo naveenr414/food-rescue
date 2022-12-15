@@ -44,6 +44,10 @@ regret_p2p = np.zeros((config['num_trial'], config['num_epoch']-1))
 regret_bandit = np.zeros((config['num_trial'], config['num_epoch']-1))
 regret_p2p_o = np.zeros((config['num_trial'], config['num_epoch']-1))
 regret_p2p_b = np.zeros((config['num_trial'], config['num_epoch']-1))
+
+regret_match_p2p = np.zeros((config['num_trial'], config['num_epoch']-1))
+regret_match_bandit = np.zeros((config['num_trial'], config['num_epoch']-1))
+
 time_p2p = np.zeros((config['num_trial'], config['num_epoch']-1))
 time_bandit = np.zeros((config['num_trial'], config['num_epoch']-1))
 
@@ -58,7 +62,16 @@ for trial_idx in range(config['num_trial']):
         test_feature, test_label = env.get_new_data(epoch)
         action_p2p, time_p2p[trial_idx, epoch-1] = engine_p2p.p2p_an_epoch(data_loader, test_feature, epoch_id=epoch)
         action_bandit, time_bandit[trial_idx, epoch-1] = engine_bandit.p2p_an_epoch(data_loader, test_feature, epoch_id=epoch)
+        matches_bandit = engine_bandit.get_matches(action_bandit,test_label)
+        matches_p2p = engine_p2p.get_matches(action_p2p,test_label)
+        
         best_action = engine_p2p.p2p_known_mu(test_label)
+        best_matches = engine_p2p.get_matches(best_action,test_label)
+                
+        bandit_match_reward = env.get_match_reward(matches_bandit)
+        best_match_reward = env.get_match_reward(best_matches)
+        p2p_match_reward = env.get_match_reward(matches_p2p)
+            
         ro_p2p, rb_p2p = env.get_reward(action_p2p)
         ro_bandit, rb_bandit = env.get_reward(action_bandit)
         engine_p2p.update_bandit(ro_p2p, rb_p2p)
@@ -70,6 +83,9 @@ for trial_idx in range(config['num_trial']):
         regret_p2p_b[trial_idx, epoch-1] = rb_p2p.sum() - rb_best.sum()
         regret_bandit[trial_idx, epoch-1] = ro_bandit.sum() + rb_bandit.sum() - ro_best.sum() - rb_best.sum()
                 
+        regret_match_bandit[trial_idx, epoch-1] = best_match_reward - bandit_match_reward
+        regret_match_p2p[trial_idx, epoch-1] = best_match_reward - p2p_match_reward
+            
         if epoch == config['num_epoch'] - 1:
             end_time = time()
             print('Epoch {} starts !'.format(epoch))
@@ -87,6 +103,7 @@ for trial_idx in range(config['num_trial']):
             config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],config['learning_alg'],trial_idx),
             regret_p2p_b)
 
+            print(np.mean(regret_match_p2p),np.mean(regret_match_bandit))
 
 
 nbc_palette = ['#e16428', '#b42846', '#008cc3', '#00a846']
