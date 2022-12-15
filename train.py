@@ -10,7 +10,7 @@ import seaborn as sns
 
 config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
               'learning_alg': 'OLS',
-              'num_trial': 10,
+              'num_trial': 5,
               'points_per_iter': 20,
               'feature_dim': 20,
               'label_dim': 5,
@@ -19,7 +19,7 @@ config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
               'eta': 1e-4,
               'KA_norm': 10,
               'delta': 1e-1,
-              'num_epoch': 21,
+              'num_epoch': 5,
               'learn_iter': 500,
               'batch_size': 32,
               'optimizer': 'adam',
@@ -59,13 +59,13 @@ for trial_idx in range(config['num_trial']):
         matches_p2p = engine_p2p.get_matches(action_p2p,test_label, env._m)
         matches_bandit = engine_bandit.get_matches(action_bandit,test_label, env._m)
 
-        best_action = engine_p2p.p2p_known_mu(test_label)
+        best_action = engine_p2p.p2p_known_mu(test_label, env._m)
         best_matches = engine_p2p.get_matches(best_action,test_label, env._m)
-
+        
         ro_p2p, rb_p2p = env.get_reward(action_p2p)
         ro_bandit, rb_bandit = env.get_reward(action_bandit)
         ro_best, rb_best = env.get_reward(best_action)
-
+        
         p2p_match_reward = env.get_match_reward(matches_p2p)
         bandit_match_reward = env.get_match_reward(matches_bandit)
         best_match_reward = env.get_match_reward(best_matches)
@@ -111,7 +111,7 @@ def plot_data(data,labels,file_name):
 
     with sns.axes_style("darkgrid"):
         epochs = list(range(101))
-        for i in range(4):
+        for i in range(len(data)):
             ax.plot(range(1, config['num_epoch']-1), results_mean[i,:], label=labels[i], c=nbc_palette[i])
             ax.fill_between(range(1, config['num_epoch']-1), results_mean[i,:]-results_std[i,:], results_mean[i,:]+results_std[i,:] ,alpha=0.3, facecolor=nbc_palette[i])
         ax.legend()
@@ -126,4 +126,8 @@ data = [regret_p2p,regret_bandit,regret_p2p_o,regret_p2p_b]
 labels = ['PROOF', 'Vanilla OFU', 'PROOF (Optimization)', 'PROOF (Bandit)']
 plot_data(data,labels,file_name)
 
-plot_data(data,labels,'figures/temp.png')
+file_name = 'figures/n{}m{}d{}ka{}eta{}eps{}iter{}alg{}FINAL{}_match.png'.format(config['points_per_iter'], config['feature_dim'], config['label_dim'],
+config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],config['learning_alg'],config['num_trial'])
+data = [regret_match_p2p,regret_match_bandit]
+labels = ['PROOF', 'Vanilla OFU']
+plot_data(data,labels,file_name)

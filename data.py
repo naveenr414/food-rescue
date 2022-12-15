@@ -165,7 +165,7 @@ class P2PEnvironment(object):
         capacity_valid = volunteer_capacity >= self._x[trip_number][self.m+3]
         range_valid = volunteer_range >= self._x[trip_number][self.m+2]
         
-        return int(range_valid and capacity_valid)
+        return int(capacity_valid and range_valid)
 
     def generate_mask(self):
         """Call the mask function for every combination of trip and volunteer
@@ -193,7 +193,17 @@ class P2PEnvironment(object):
         self.dataset.add_data(feature=torch.Tensor(self._x), label=torch.Tensor(self._y))
 
     def get_reward(self, action):
-        ro = np.sum(self._y * action, 1)
+        """Get the reward by seeing which actions are valid (through self._y and self._m)
+        And also the hidden error (through self._mu)
+        
+        Arguments: 
+            Action: n x d numpy matrix
+           
+        Returns:
+            Reward from optimizing and reward from bandit
+        """
+        
+        ro = np.sum(-self._y * action * self._m, 1)
         rb = action.dot(self.mu) + np.random.normal(0, self.eta, self.n)
         return ro, rb
     

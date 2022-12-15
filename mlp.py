@@ -117,10 +117,10 @@ class P2PEngine(object):
                 model.w[j].value = (2*np.random.rand() - 1)/np.sqrt(self.d)
                 model.nu[j].value = (2*np.random.rand() - 1)/np.sqrt(self.d)
 
-            model.w_constraint = Constraint(expr=sum(model.w[j] for j in range(self.d)) <= self.d_max)            
+            model.w_constraint = Constraint(expr=sum(model.w[j] for j in range(self.d)) <= self.d_max)  
             expr1 = sum(self.A[i,j,k] * (model.nu[j] - self.mu_hat[i,j]) *
             (model.nu[k] - self.mu_hat[i,k]) for j in range(self.d) for k in range(self.d))
-            model.nu_constraint = Constraint(expr= expr1 <= self.beta**.5)
+            model.nu_constraint = Constraint(expr= expr1 <= self.beta ** .5)
             
             model.obj = Objective(expr=sum((-c_hat[j] + model.nu[j]) * model.w[j] for j in range(self.d)), sense=minimize)
 
@@ -159,12 +159,13 @@ class P2PEngine(object):
             self.A[i,:,:] = self.A[i,:,:] + np.outer(self.w[i,:], self.w[i,:])
             self.mu_hat[i,:] = np.matmul(np.linalg.inv(self.A[i,:,:]), self.rw[i,:])
 
-    def p2p_known_mu(self, test_label):
+    def p2p_known_mu(self, test_label, mask):
         """Given that we know c and mu, find the offline optimal solution
         Do this by minimizing (-c+mu)*w, with the constraint that |w| <= self.d
         
         Arguments: 
-            test_label: n x d 0-1 matrix test_label, which information on who's available
+            test_label: n x d 0-1 matrix, with information on who's available
+            mask: n x d 0-1 matrix, with information on who's available, based on volunteer properties
 
         Returns: 
             w_known: Optimal w given all the information
@@ -172,10 +173,9 @@ class P2PEngine(object):
         
         for i in range(self.n):
             lp = gp.Model("lp" + str(i))
-            c = test_label[i,:].squeeze()
+            c = (test_label[i,:]*mask[i,:]).squeeze()
             w = lp.addMVar(shape=self.d, lb=-GRB.INFINITY, name="w", vtype=gp.GRB.BINARY)
-            lp.setObjective((-c + self.mu) @ w, GRB.MINIMIZE)
-            
+            lp.setObjective((-c + self.mu) @ w, GRB.MINIMIZE)            
             lp.addConstr(gp.quicksum(w[i] for i in range(self.d)) <= self.d_max,name="norm")
             lp.Params.OutputFlag = 0
             try:
