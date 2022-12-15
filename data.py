@@ -33,87 +33,151 @@ class P2PEnvironment(object):
         self.eps = config['epsilon']
         self.eta = config['eta']
         self.KA = config['KA_norm']
-        
         self.r_mean = config['mean_volunteer_attributes']
         self.r_std = config['std_volunteer_attributes']
         self.n_s = config['num_sources']
         self.n_d = config['num_destinations']
+        self.x_tilde_mean = config['mean_task_attributes']
+        self.x_tilde_std = config['std_task_attributes']
         
-        self.avg_data_capacity = config['avg_data_capacity']
-        self.std_data_capacity = config['std_data_capacity']
-        self.x_tilde_attributes = config['x_tilde_attributes']
-        self.r_attributes = config['r_attributes']
+        self.r_attributes = len(self.r_mean)
+        self.x_tilde_attributes = len(self.x_tilde_mean)
 
-        
         np.random.seed(seed)
-        self.A = (2 * np.random.rand(self.d, self.m) - 1)
-        self.A = self.A/np.linalg.norm(self.A, 1) * np.random.rand() * self.KA
-        self.mu = 2 * np.random.rand(self.d) - 1
-        self.mu = self.mu/np.linalg.norm(self.mu, 2) * np.random.rand()        
-        self.num_sources = config['num_sources']
-        self.num_destinations = config['num_destinations']
-        
-                
-        self.setup_locations()
+           
+        self.generate_underlying_parameters()
+        self.generate_random_locations()
         self.generate_volunteer_info()
             
         self.get_new_data(0)
         self.dataset = P2PDataset(feature=torch.Tensor(self._x), label=torch.Tensor(self._y))
 
-    def setup_locations(self):
-        self.source_locations = np.random.random((self.num_sources,2))
-        self.destination_locations = np.random.random((self.num_destinations,2))
+    def generate_underlying_parameters(self):
+        """Genreate the A and mu variables, which are used to generate
+            the labels (c = Ax) and represent the unknown part of the loss
+            
+            Arguments: Nothing
+            
+            Returns: Nothing
+            
+            Side Effects: Sets A and mu attributes
+        """
+        self.A = (2 * np.random.rand(self.d, self.m) - 1)
+        self.A = self.A/np.linalg.norm(self.A, 1) * np.random.rand() * self.KA
+        self.mu = 2 * np.random.rand(self.d) - 1
+        self.mu = self.mu/np.linalg.norm(self.mu, 2) * np.random.rand()     
+        
+    def generate_random_locations(self):
+        """Generate a list of source locations (which refer to food exporters, such as grocery stores)
+            and destination locations (which refer to food importers, such as food banks)
+            
+            Arguments: Nothing
+            
+            Return: Nothing
+            
+            Side Effects: Sets source_locations and destination_locations to be n_s x 2 and n_d x 2 matrices
+        """
+        
+        self.source_locations = np.random.random((self.n_s,2))
+        self.destination_locations = np.random.random((self.n_d,2))
         self.source_destination_distances = distance.cdist(self.source_locations,self.destination_locations)
         
     def generate_volunteer_info(self):
-        self.volunteer_capacities = np.random.normal(self.config['avg_capacity'],self.config['std_capacity'],(self.d))
-        self.volunteer_range = np.random.normal(self.config['avg_range'],self.config['std_range'],(self.d))
-        self.r = np.array([self.volunteer_capacities,self.volunteer_range]).T
+        """Generate the volunteer attributes for heterogenous agents, and store this in the r variable
+            Each attribute is generated through a normal distribution, where the mean and std are 
+            defined in the config
+            
+            Arguments: Nothing
+            
+            Returns: Nothing
+            
+            Side Effects: Sets the r variable representing volunteer attributes
+        """
+        
+        volunter_attributes = []
+        for i in range(self.r_attributes):
+            attribute = np.random.normal(self.r_mean[i],self.r_std[i],(self.d))
+            volunter_attributes.append(attribute)
+        
+        self.r = np.array(volunter_attributes).T
         
     def get_data_loader(self):
         return DataLoader(self.dataset, batch_size=self.config['batch_size'], shuffle=True)
 
     def generate_label(self):
-        self._y = self.A.dot(self._x[:,:-self.x_tilde_attributes].T).T + np.random.normal(0, self.eps, self.d)
+        """Generate a random 0-1 label based on input x and matrix A
+            y = A*x, for the non-extra attributes, with some Gaussian noise 
+        
+        Arguments: Nothing
+        
+        Returns: Nothing
+        
+        Side Effects: Sets the self._y variable 
+        """
+        
+        self._y = self.A.dot(self._x[:,:-(self.x_tilde_attributes+3)].T).T + np.random.normal(0, self.eps, self.d)
         self._y[self._y>0.5] = 1
         self._y[self._y<0.5] = 0
 
     def generate_data(self):
+        """Generate a random data point x, along with supplemental information x_tilde
+            x_tilde captures source-destination-distance information, in addition to any 
+            other features necesary 
+            
+            Arguments: Nothing
+            
+            Returns: Nothing
+            
+            Side Effects: Sets the self._x vector
+        """
+        
         self._x = 2 * np.random.rand(self.n, self.m) - 1
         self._x = self._x / (np.tile(np.linalg.norm(self._x, 2, 1)/np.random.rand(self.n), (self.m, 1)).T)
 
-        self.data_sources = np.random.randint(0,self.num_sources,(self.n))
-        self.data_destinations = np.random.randint(0,self.num_destinations,(self.n))
-        self.data_distances = []
-        
-        for i in range(self.n):
-            source = self.data_sources[i]
-            destination = self.data_destinations[i]
-            self.data_distances.append(self.source_destination_distances[source][destination])
-    
+        self.data_sources = np.random.randint(0,self.n_s,(self.n))
+        self.data_destinations = np.random.randint(0,self.n_d,(self.n))
+        self.data_distances = [self.source_destination_distances[source][destination] for source, destination \
+                               in zip(self.data_sources, self.data_destinations)]
         self.data_distances = np.array(self.data_distances)
-        self.data_capacities = np.random.normal(self.avg_data_capacity,self.std_data_capacity,(self.n))
+        distance_attributes = [self.data_sources,self.data_destinations,self.data_distances]
         
-        for column in [self.data_sources,self.data_destinations,self.data_distances,self.data_capacities]:
+        x_tilde_attributes = []
+        for i in range(self.x_tilde_attributes):
+            x_tilde_attributes.append(np.random.normal(self.x_tilde_mean[i],self.x_tilde_std[i],(self.n)))
+                
+        for column in distance_attributes + x_tilde_attributes:
             self._x = np.append(self._x, np.reshape(column,(len(column),1)), axis=1)
             
     def mask_function(self,trip_number,volunteer_number):
+        """Create a mask function, which says which trip-volunteer combinations are valid, 
+            based on external factors (x_tilde)
+            
+        Arguments: 
+            trip_number: Which trip this is; 0<=trip_number<self.n
+            volunter_number: Which volunteer we're trying to match; 0<=volunteer_number<self.d
+    
+        Returns: 0 or 1, depending on if a trip is valid
+        """
+        
         volunteer_capacity = self.r[volunteer_number][0]
         volunteer_range = self.r[volunteer_number][1]
 
-        # Check if the capacity <= capacity, and the range <= range
         capacity_valid = volunteer_capacity >= self._x[trip_number][self.m+3]
         range_valid = volunteer_range >= self._x[trip_number][self.m+2]
         
-        if range_valid and capacity_valid:
-            return 1
-        else:
-            return 0
-            
+        return int(range_valid and capacity_valid)
+
     def generate_mask(self):
-        # From self._x and self.volunter_info, generate the nxd 0-1 matrix, mask
-        self._m = np.zeros((self.n,self.d))
+        """Call the mask function for every combination of trip and volunteer
         
+        Arguments: Nothing
+        
+        Returns: Nothing
+        
+        Side Effects: Sets the mask, self._m
+        """
+        
+        self._m = np.zeros((self.n,self.d))        
         for i in range(self.n):
             for j in range(self.d):
                 self._m[i][j] = self.mask_function(i,j)

@@ -27,14 +27,10 @@ mlp_config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
               'l2_regularization': 1e-4, 
               'num_sources': 5,
               'num_destinations': 5, 
-              'avg_capacity': 0.7,
-              'std_capacity': 0.1,
-              'avg_range': 0.7,
-              'std_range': 0.1,
-              'avg_data_capacity': 0.6,
-              'std_data_capacity': 0.1,
-              'x_tilde_attributes': 4,
-              'r_attributes': 2,
+              'mean_volunteer_attributes': [0.7,0.7],
+              'std_volunteer_attributes': [0.1,0.1],
+              'mean_task_attributes': [0.6],
+              'std_task_attributes': [0.1],
               }
 
 
