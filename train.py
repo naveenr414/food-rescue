@@ -58,11 +58,11 @@ for trial_idx in range(config['num_trial']):
         test_feature, test_label = env.get_new_data(epoch)
         action_p2p, time_p2p[trial_idx, epoch-1] = engine_p2p.p2p_an_epoch(data_loader, test_feature, epoch_id=epoch)
         action_bandit, time_bandit[trial_idx, epoch-1] = engine_bandit.p2p_an_epoch(data_loader, test_feature, epoch_id=epoch)
-        matches_bandit = engine_bandit.get_matches(action_bandit,test_label)
-        matches_p2p = engine_p2p.get_matches(action_p2p,test_label)
+        matches_bandit = engine_bandit.get_matches(action_bandit,test_label, env._m)
+        matches_p2p = engine_p2p.get_matches(action_p2p,test_label, env._m)
         
         best_action = engine_p2p.p2p_known_mu(test_label)
-        best_matches = engine_p2p.get_matches(best_action,test_label)
+        best_matches = engine_p2p.get_matches(best_action,test_label, env._m)
                 
         bandit_match_reward = env.get_match_reward(matches_bandit)
         best_match_reward = env.get_match_reward(best_matches)
