@@ -31,10 +31,6 @@ class P2PEngine(object):
         self.mu = env.mu
         self.w_known = np.zeros((self.n, self.d))
         self.volunteer_info = env.r
-        
-        self.all_features = []
-        self.all_y_values = []
-
 
     def p2p_an_epoch(self, data_loader, test_feature, epoch_id):
         """For each epoch, learn then optimize to figure out what the optimal value of w is
@@ -69,15 +65,8 @@ class P2PEngine(object):
         
         Side Effects: Re-fits our predictor function with all of the data_loader data points
         """
-        
-        if self.all_features == []:
-            self.all_features = data_loader.dataset.feature
-            self.all_y_values = data_loader.dataset.label
-        else:
-            self.all_features = np.concatenate([self.all_features,data_loader.dataset.feature])
-            self.all_y_values = np.concatenate([self.all_y_values,data_loader.dataset.label])
 
-        self.predictor.fit(self.all_features, self.all_y_values)
+        self.predictor.fit(data_loader.dataset.feature, data_loader.dataset.label)
         
     def format_mask_data(self,x,r):
         """Turn a matrix x (containing task data) and r, containing volunteer info, into
