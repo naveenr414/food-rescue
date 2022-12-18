@@ -32,7 +32,7 @@ def plot_data(data,labels,file_name):
 
 config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
               'learning_alg': 'OLS',
-              'num_trial': 10,
+              'num_trial': 11,
               'points_per_iter': 20,
               'feature_dim': 20,
               'label_dim': 5,
@@ -58,51 +58,48 @@ config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
 # Matrices storing information on each epoch 
 regret_p2p = np.zeros((config['num_trial'], config['num_epoch']-1))
 regret_bandit = np.zeros((config['num_trial'], config['num_epoch']-1))
-regret_p2p_o = np.zeros((config['num_trial'], config['num_epoch']-1))
-regret_p2p_b = np.zeros((config['num_trial'], config['num_epoch']-1))
+regret_mask = np.zeros((config['num_trial'],config['num_epoch']-1))
 regret_match_p2p = np.zeros((config['num_trial'], config['num_epoch']-1))
 regret_match_bandit = np.zeros((config['num_trial'], config['num_epoch']-1))
+regret_match_mask = np.zeros((config['num_trial'],config['num_epoch']-1))
 time_p2p = np.zeros((config['num_trial'], config['num_epoch']-1))
 time_bandit = np.zeros((config['num_trial'], config['num_epoch']-1))
 
+def run_one_round(engine,env,data_loader,test_feature,test_label,epoch,trial_idx,regret_matrix, match_matrix, best_match, best_reward):
+    action, _time = engine.p2p_an_epoch(data_loader, test_feature, epoch_id=epoch)
+    matches = engine.get_matches(action,test_label,env._m)
+    ro, rb = env.get_reward(action)
+    match_reward = env.get_match_reward(matches)
+    engine.update_bandit(ro,rb)
+    regret_matrix[trial_idx, epoch-1] = (ro.sum()+rb.sum())-best_reward.sum()
+    match_matrix[trial_idx, epoch-1] = best_match - match_reward
+    
+    return ro, rb, match_reward
+
 for trial_idx in range(config['num_trial']):
     env = P2PEnvironment(config, seed=trial_idx * 10)
-    engine_p2p = P2PEngine(env, config, pure_bandit=False)
-    engine_bandit = P2PEngine(env, config, pure_bandit=True)
+    engine_p2p = P2PEngine(env, config, pure_bandit=False, predict_mask=False)
+    engine_mask = P2PEngine(env, config, pure_bandit=False, predict_mask=True)
+    engine_bandit = P2PEngine(env, config, pure_bandit=True, predict_mask=False)
+    
     start_time = time()
     
     for epoch in range(1, config['num_epoch']):
         data_loader = env.get_data_loader()
         test_feature, test_label = env.get_new_data(epoch)
         
-        action_p2p, time_p2p[trial_idx, epoch-1] = engine_p2p.p2p_an_epoch(data_loader, test_feature, epoch_id=epoch)
-        action_bandit, time_bandit[trial_idx, epoch-1] = engine_bandit.p2p_an_epoch(data_loader, test_feature, epoch_id=epoch)
-        
-        matches_p2p = engine_p2p.get_matches(action_p2p,test_label, env._m)
-        matches_bandit = engine_bandit.get_matches(action_bandit,test_label, env._m)
-
         best_action = engine_p2p.p2p_known_mu(test_label, env._m)
+        best_reward_optimization, best_reward_bandit = env.get_reward(best_action)
+        best_reward = best_reward_optimization + best_reward_bandit
         best_matches = engine_p2p.get_matches(best_action,test_label, env._m)
-        
-        ro_p2p, rb_p2p = env.get_reward(action_p2p)
-        ro_bandit, rb_bandit = env.get_reward(action_bandit)
-        ro_best, rb_best = env.get_reward(best_action)
-        
-        p2p_match_reward = env.get_match_reward(matches_p2p)
-        bandit_match_reward = env.get_match_reward(matches_bandit)
         best_match_reward = env.get_match_reward(best_matches)
-            
-        engine_p2p.update_bandit(ro_p2p, rb_p2p)
-        engine_bandit.update_bandit(ro_bandit, rb_bandit)
+        
+        ro_bandit, rb_bandit, match_bandit = run_one_round(engine_bandit,env,data_loader,test_feature,test_label,epoch,trial_idx, regret_bandit, regret_match_bandit, best_match_reward, best_reward)
+        ro_p2p, rb_p2p, match_p2p = run_one_round(engine_p2p,env,data_loader,test_feature,test_label,epoch, trial_idx, regret_p2p, regret_match_p2p, best_match_reward, best_reward)
+        ro_mask, rb_mask, match_mask = run_one_round(engine_mask,env,data_loader,test_feature,test_label,epoch, trial_idx, regret_mask, regret_match_mask, best_match_reward, best_reward)
+
         env.add_to_data_loader()
-        
-        regret_p2p[trial_idx, epoch-1] = ro_p2p.sum() + rb_p2p.sum() - ro_best.sum() - rb_best.sum()
-        regret_p2p_o[trial_idx, epoch-1] = ro_p2p.sum() - ro_best.sum()
-        regret_p2p_b[trial_idx, epoch-1] = rb_p2p.sum() - rb_best.sum()
-        regret_bandit[trial_idx, epoch-1] = ro_bandit.sum() + rb_bandit.sum() - ro_best.sum() - rb_best.sum()
-        regret_match_bandit[trial_idx, epoch-1] = best_match_reward - bandit_match_reward
-        regret_match_p2p[trial_idx, epoch-1] = best_match_reward - p2p_match_reward
-        
+
         if epoch == config['num_epoch'] - 1:
             end_time = time()
             print('Epoch {} starts !'.format(epoch))
@@ -113,22 +110,22 @@ for trial_idx in range(config['num_trial']):
             config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],
             config['learning_alg'],trial_idx)
             
-            for algorithm, dataset in zip(['p2p','bandit','p2p_o','p2p_b'], 
-                                          [regret_p2p,regret_bandit,regret_p2p_o,regret_p2p_b]):
+            for algorithm, dataset in zip(['p2p','bandit'], 
+                                          [regret_p2p,regret_bandit]):
                 file_name = file_basename + algorithm + ".npy"
                 np.save(file_name,dataset)
 
-nbc_palette = ['#e16428', '#b42846', '#008cc3', '#00a846']
+nbc_palette = ['#e16428', '#b42846', '#008cc3', '#00a846', "#f0b428"]
 sns.palplot(sns.color_palette(nbc_palette))
 
 file_name = 'figures/n{}m{}d{}ka{}eta{}eps{}iter{}alg{}FINAL{}.png'.format(config['points_per_iter'], config['feature_dim'], config['label_dim'],
 config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],config['learning_alg'],config['num_trial'])
-data = [regret_p2p,regret_bandit,regret_p2p_o,regret_p2p_b]
-labels = ['PROOF', 'Vanilla OFU', 'PROOF (Optimization)', 'PROOF (Bandit)']
+data = [regret_p2p,regret_mask,regret_bandit]
+labels = ['PROOF', 'PROOF+Mask','Vanilla OFU']
 plot_data(data,labels,file_name)
 
 file_name = 'figures/n{}m{}d{}ka{}eta{}eps{}iter{}alg{}FINAL{}_match.png'.format(config['points_per_iter'], config['feature_dim'], config['label_dim'],
 config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],config['learning_alg'],config['num_trial'])
-data = [regret_match_p2p,regret_match_bandit]
-labels = ['PROOF', 'Vanilla OFU']
+data = [regret_match_p2p,regret_match_mask,regret_match_bandit]
+labels = ['PROOF', 'PROOF+Mask', 'Vanilla OFU']
 plot_data(data,labels,file_name)

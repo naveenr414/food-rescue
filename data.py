@@ -9,19 +9,21 @@ import time
 from scipy.spatial import distance
 
 class P2PDataset(Dataset):
-    def __init__(self, feature, label):
+    def __init__(self, feature, label, mask):
         self.feature = feature
         self.label = label
+        self.mask = mask
 
     def __getitem__(self, index):
-        return self.feature[index], self.label[index]
+        return self.feature[index], self.label[index], self.mask[index]
 
     def __len__(self):
         return self.feature.size(0)
 
-    def add_data(self, feature, label):
+    def add_data(self, feature, label, mask):
         self.feature = torch.cat((self.feature, feature), 0)
         self.label = torch.cat((self.label, label), 0)
+        self.mask = torch.cat((self.mask,mask),0)
 
 
 class P2PEnvironment(object):
@@ -50,7 +52,7 @@ class P2PEnvironment(object):
         self.generate_volunteer_info()
             
         self.get_new_data(0)
-        self.dataset = P2PDataset(feature=torch.Tensor(self._x), label=torch.Tensor(self._y))
+        self.dataset = P2PDataset(feature=torch.Tensor(self._x), label=torch.Tensor(self._y), mask=torch.Tensor(self._m))
 
     def generate_underlying_parameters(self):
         """Genreate the A and mu variables, which are used to generate
@@ -190,7 +192,7 @@ class P2PEnvironment(object):
         return self._x, self._y
 
     def add_to_data_loader(self):
-        self.dataset.add_data(feature=torch.Tensor(self._x), label=torch.Tensor(self._y))
+        self.dataset.add_data(feature=torch.Tensor(self._x), label=torch.Tensor(self._y), mask=torch.Tensor(self._m))
 
     def get_reward(self, action):
         """Get the reward by seeing which actions are valid (through self._y and self._m)
@@ -204,7 +206,7 @@ class P2PEnvironment(object):
         """
         
         ro = np.sum(-self._y * action * self._m, 1)
-        rb = action.dot(self.mu) + np.random.normal(0, self.eta, self.n)
+        rb = (action*self._m).dot(self.mu) + np.random.normal(0, self.eta, self.n)
         return ro, rb
     
     def get_match_reward(self, matches):

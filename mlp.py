@@ -2,6 +2,7 @@ import numpy as np
 import gurobipy as gp
 from gurobipy import GRB
 from sklearn.linear_model import LinearRegression
+from sklearn.neural_network import MLPRegressor
 from pyomo.environ import *
 from pyomo.opt import SolverStatus, TerminationCondition
 from time import time
@@ -10,10 +11,13 @@ from scipy.optimize import linear_sum_assignment
 
 
 class P2PEngine(object):
-    def __init__(self, env, config, pure_bandit):
+    def __init__(self, env, config, pure_bandit,predict_mask):
         self.config = config
         self.pure_bandit = pure_bandit
+        self.predict_mask = predict_mask
         self.predictor = LinearRegression(fit_intercept=False, n_jobs=-1)
+        self.mask_predictor = LinearRegression()
+        
         self.n = config['points_per_iter']
         self.m = config['feature_dim']
         self.d = config['label_dim']
@@ -26,6 +30,10 @@ class P2PEngine(object):
         self.beta = max(128 * self.d * np.log(1) * np.log(1/self.delta), np.square(8/3 * np.log(1/self.delta)))
         self.mu = env.mu
         self.w_known = np.zeros((self.n, self.d))
+        self.volunteer_info = env.r
+        
+        self.all_features = []
+        self.all_y_values = []
 
 
     def p2p_an_epoch(self, data_loader, test_feature, epoch_id):
@@ -45,6 +53,8 @@ class P2PEngine(object):
         start_time = time()
         if not self.pure_bandit:
             self.learn(data_loader)
+        if self.predict_mask:
+            self.learn_mask(data_loader)
         self.optimize(test_feature)
         end_time = time()
         return self.w, end_time - start_time
@@ -60,7 +70,49 @@ class P2PEngine(object):
         Side Effects: Re-fits our predictor function with all of the data_loader data points
         """
         
-        self.predictor.fit(data_loader.dataset.feature, data_loader.dataset.label)
+        if self.all_features == []:
+            self.all_features = data_loader.dataset.feature
+            self.all_y_values = data_loader.dataset.label
+        else:
+            self.all_features = np.concatenate([self.all_features,data_loader.dataset.feature])
+            self.all_y_values = np.concatenate([self.all_y_values,data_loader.dataset.label])
+
+        self.predictor.fit(self.all_features, self.all_y_values)
+        
+    def format_mask_data(self,x,r):
+        """Turn a matrix x (containing task data) and r, containing volunteer info, into
+            A combined matrix, where each row of x is x[i] + r
+            
+        Arguments:
+            x: A numpy array, of size n x m 
+            r: A numpy array of size d x n_attributes
+
+        Returns: Numpy array of size n x (m+d*n_attributes)
+        """
+        
+        x = x[:,self.m:]
+        r = r.flatten()
+        r_formatted = np.stack((r,) * len(x), axis=0)
+        combined_array = np.concatenate([x,r_formatted],axis=1)
+        return combined_array
+        
+    def learn_mask(self, data_loader):
+        """Add the pair ((x,y,),M) to our predictor function, which is currently linear regression
+        
+        Arguments:
+            data_loader: PyTorch data loader with our data (x)
+            volunteer_info: The numpy array y
+            true_mask: The true value of the mask, M
+            
+        Returns: Nothing
+        
+        Side Effects: Re-fits our mask_predictor function with ((x,y),M)
+        """
+        
+        x = data_loader.dataset.feature
+        formatted_data = self.format_mask_data(x,self.volunteer_info)
+                        
+        self.mask_predictor.fit(formatted_data,data_loader.dataset.mask)
 
     def optimize(self, test_feature):
         """Run an optimization function for each data point in the epoch (n of them) 
@@ -108,6 +160,12 @@ class P2PEngine(object):
                 c_hat = np.zeros(self.d)
             else:
                 c_hat = self.predictor.predict(x.reshape(1, -1)).squeeze()
+                
+            if self.predict_mask:
+                combined_data = self.format_mask_data(x.reshape(1,-1),self.volunteer_info)
+                m_hat = self.mask_predictor.predict(combined_data).squeeze()
+            else:
+                m_hat = np.ones(self.d)
 
             model = ConcreteModel()
             model.dSet = Set(initialize=range(self.d))
@@ -122,11 +180,12 @@ class P2PEngine(object):
             (model.nu[k] - self.mu_hat[i,k]) for j in range(self.d) for k in range(self.d))
             model.nu_constraint = Constraint(expr= expr1 <= self.beta ** .5)
             
-            model.obj = Objective(expr=sum((-c_hat[j] + model.nu[j]) * model.w[j] for j in range(self.d)), sense=minimize)
+            model.obj = Objective(expr=sum((-c_hat[j] + model.nu[j]) * model.w[j] * m_hat[j] for j in range(self.d)), sense=minimize)
 
             try:
                 result = solver.solve(model, tee = False, keepfiles = False)
             except ValueError:
+                print("Value error!!")
                 w[i,:] = -self.mu_hat[i,:]/np.linalg.norm(self.mu_hat[i,:], 2)
                 continue
 
