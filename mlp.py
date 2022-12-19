@@ -11,10 +11,11 @@ from scipy.optimize import linear_sum_assignment
 
 
 class P2PEngine(object):
-    def __init__(self, env, config, pure_bandit,predict_mask):
+    def __init__(self, env, config, pure_bandit, predict_mask, use_all_data=False):
         self.config = config
         self.pure_bandit = pure_bandit
         self.predict_mask = predict_mask
+        self.use_all_data = use_all_data
         self.predictor = LinearRegression(fit_intercept=False, n_jobs=-1)
         self.mask_predictor = LinearRegression()
         
@@ -31,6 +32,11 @@ class P2PEngine(object):
         self.mu = env.mu
         self.w_known = np.zeros((self.n, self.d))
         self.volunteer_info = env.r
+        
+        self.all_x = []
+        self.all_x_tilde = []
+        self.all_y = []
+        self.all_r = []
 
     def p2p_an_epoch(self, data_loader, test_feature, epoch_id):
         """For each epoch, learn then optimize to figure out what the optimal value of w is
@@ -66,7 +72,17 @@ class P2PEngine(object):
         Side Effects: Re-fits our predictor function with all of the data_loader data points
         """
 
-        self.predictor.fit(data_loader.dataset.feature, data_loader.dataset.label)
+        if self.use_all_data:
+            if self.all_x == []:
+                self.all_x = data_loader.dataset.feature
+                self.all_y = data_loader.dataset.label
+            else:
+                self.all_x = np.concatenate([self.all_x,data_loader.dataset.feature])
+                self.all_y = np.concatenate([self.all_y,data_loader.dataset.label])
+            
+            self.predictor.fit(self.all_x, self.all_y)
+        else:
+            self.predictor.fit(data_loader.dataset.feature, data_loader.dataset.label)
         
     def format_mask_data(self,x,r):
         """Turn a matrix x (containing task data) and r, containing volunteer info, into
@@ -100,8 +116,18 @@ class P2PEngine(object):
         
         x = data_loader.dataset.feature
         formatted_data = self.format_mask_data(x,self.volunteer_info)
-                        
-        self.mask_predictor.fit(formatted_data,data_loader.dataset.mask)
+        
+        if self.use_all_data:
+            if self.all_x_tilde == []:
+                self.all_x_tilde = formatted_data
+                self.all_r = data_loader.dataset.mask
+            else:
+                self.all_x_tilde = np.concatenate([self.all_x_tilde,formatted_data])
+                self.all_r = np.concatenate([self.all_r,data_loader.dataset.mask])
+                
+            self.mask_predictor.fit(self.all_x_tilde,self.all_r)
+        else:            
+            self.mask_predictor.fit(formatted_data,data_loader.dataset.mask)
 
     def optimize(self, test_feature):
         """Run an optimization function for each data point in the epoch (n of them) 
