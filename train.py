@@ -17,6 +17,15 @@ def get_cumsum(data):
 
 def plot_data(data,labels,file_name):
     fig, ax = plt.subplots()
+    if "match" in file_name:
+        ax.set_title("Matching regret by epoch")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Matching regret")
+    else:
+        ax.set_title("Regret by epoch")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Regret")
+    
     results = [get_cumsum(i) for i in data]
     results_mean, results_std = zip(*results)
     results_mean = np.stack(results_mean)
@@ -30,30 +39,7 @@ def plot_data(data,labels,file_name):
         ax.legend()
     fig.savefig(file_name)
 
-config = {'alias': 'mlp_factor8neg4_bz256_166432168_pretrain_reg_0.0000001',
-              'learning_alg': 'OLS',
-              'num_trial': 11,
-              'points_per_iter': 20,
-              'feature_dim': 20,
-              'label_dim': 5,
-              'label_max': 2, 
-              'epsilon': 1e-1,
-              'eta': 1e-4,
-              'KA_norm': 10,
-              'delta': 1e-1,
-              'num_epoch': 21,
-              'learn_iter': 500,
-              'batch_size': 32,
-              'optimizer': 'adam',
-              'adam_lr': 1e-3,
-              'l2_regularization': 1e-4, 
-              'num_sources': 5,
-              'num_destinations': 5, 
-              'mean_volunteer_attributes': [0.7,0.7],
-              'std_volunteer_attributes': [0.1,0.1],
-              'mean_task_attributes': [0.6],
-              'std_task_attributes': [0.1],
-              }
+config = eval(open("config.txt").read())
 
 def generate_array(config):
     return np.zeros((config['num_trial'], config['num_epoch']-1))
@@ -112,27 +98,26 @@ for trial_idx in range(config['num_trial']):
             print('Epoch {} starts !'.format(epoch))
             print('-' * 80)
             
-            file_basename = 'runs/n{}m{}d{}ka{}eta{}eps{}iter{}alg{}trial{}regret_'.format(config['points_per_iter'], 
-            config['feature_dim'], config['label_dim'],
-            config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],
-            config['learning_alg'],trial_idx)
+            file_basename = 'runs/n{}m{}d{}capacity{}range{}task{}ns{}trial{}regret_'.format(config['points_per_iter'], 
+            config['feature_dim'], config['label_dim'],config['mean_volunteer_attributes'][0],config['mean_volunteer_attributes'][1],config['mean_task_attributes'][0],config['num_sources'],trial_idx)
             
-            for algorithm, dataset in zip(['p2p','bandit'], 
-                                          [regret_p2p,regret_bandit]):
+            for algorithm, dataset in zip(['p2p','bandit','mask','alldata'], 
+                                          [regret_p2p,regret_bandit,regret_mask,regret_all_data]):
                 file_name = file_basename + algorithm + ".npy"
                 np.save(file_name,dataset)
 
-nbc_palette = ['#e16428', '#b42846', '#008cc3', '#00a846', "#f0b428"]
+nbc_palette = [[0,0,0], [230/255,159/255,0], [86/255,180/255,233/255], [0,158/255,115/255],
+          [213/255,94/255,0], [0,114/255,178/255],[213/255,94/255,0/255],[204/255,121/255,167/255]]
 sns.palplot(sns.color_palette(nbc_palette))
 
-file_name = 'figures/n{}m{}d{}ka{}eta{}eps{}iter{}alg{}FINAL{}.png'.format(config['points_per_iter'], config['feature_dim'], config['label_dim'],
-config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],config['learning_alg'],config['num_trial'])
+file_name = 'figures/n{}m{}d{}capacity{}range{}task{}ns{}_regret.png'.format(config['points_per_iter'], 
+            config['feature_dim'], config['label_dim'],config['mean_volunteer_attributes'][0],config['mean_volunteer_attributes'][1],config['mean_task_attributes'][0],config['num_sources'])
 data = [regret_p2p,regret_mask,regret_all_data,regret_bandit]
 labels = ['PROOF', 'PROOF+Mask','PROOF+Mask+All Data','Vanilla OFU']
 plot_data(data,labels,file_name)
 
-file_name = 'figures/n{}m{}d{}ka{}eta{}eps{}iter{}alg{}FINAL{}_match.png'.format(config['points_per_iter'], config['feature_dim'], config['label_dim'],
-config['KA_norm'],config['eta'],config['epsilon'],config['learn_iter'],config['learning_alg'],config['num_trial'])
+file_name = 'figures/n{}m{}d{}capacity{}range{}task{}ns{}_match.png'.format(config['points_per_iter'], 
+            config['feature_dim'], config['label_dim'],config['mean_volunteer_attributes'][0],config['mean_volunteer_attributes'][1],config['mean_task_attributes'][0],config['num_sources'])
 data = [regret_match_p2p,regret_match_mask,regret_match_all_data,regret_match_bandit]
 labels = ['PROOF', 'PROOF+Mask','PROOF+Mask+All Data','Vanilla OFU']
 plot_data(data,labels,file_name)
